@@ -17,6 +17,7 @@
 # limitations under the License.
 #
 import asyncio
+import signal
 from typing import Any, Dict, List, Type, TypeVar
 
 from nitric.context import FunctionServer
@@ -70,8 +71,10 @@ class Nitric:
         """
         Check if the Nitric application has been started.
 
-        Returns:
+        Returns
+        -------
             bool: True if the Nitric application has been started, False otherwise.
+
         """
         return cls._has_run
 
@@ -84,16 +87,26 @@ class Nitric:
         """
         if cls._has_run:
             print("The Nitric application has already been started, Nitric.run() should only be called once.")
+            return
+
         cls._has_run = True
+
+        def handle_sigterm():
+            print("\nReceived SIGTERM, shutting down...")
+            for task in asyncio.all_tasks(loop):
+                task.cancel()
+            loop.stop()
+
         try:
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = asyncio.get_event_loop()
 
+                loop.add_signal_handler(signal.SIGTERM, handle_sigterm)
+
             loop.run_until_complete(asyncio.gather(*[wkr.start() for wkr in cls._workers]))
         except KeyboardInterrupt:
-
             print("\nexiting")
         except ConnectionRefusedError as cre:
             raise NitricUnavailableException(
